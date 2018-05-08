@@ -2,33 +2,15 @@ package com.marianhello.bgloc;
 
 import android.Manifest;
 import android.accounts.Account;
-import android.annotation.TargetApi;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.ServiceConnection;
+import android.content.*;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.Uri;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
+import android.os.*;
 import android.provider.Settings;
 import android.provider.Settings.SettingNotFoundException;
 import android.support.v4.content.ContextCompat;
-import android.text.TextUtils;
-
-import com.marianhello.bgloc.data.BackgroundActivity;
-import com.marianhello.bgloc.data.BackgroundLocation;
-import com.marianhello.bgloc.data.ConfigurationDAO;
-import com.marianhello.bgloc.data.DAOFactory;
-import com.marianhello.bgloc.data.LocationDAO;
+import com.marianhello.bgloc.data.*;
 import com.marianhello.bgloc.headless.HeadlessTaskRunner;
 import com.marianhello.bgloc.sync.AccountHelper;
 import com.marianhello.bgloc.sync.SyncService;
@@ -36,7 +18,6 @@ import com.marianhello.logging.DBLogReader;
 import com.marianhello.logging.LogEntry;
 import com.marianhello.logging.LoggerManager;
 import com.marianhello.logging.UncaughtExceptionLogger;
-
 import org.json.JSONException;
 import org.slf4j.event.Level;
 
@@ -213,11 +194,15 @@ public class BackgroundGeolocationFacade {
         }
     };
 
-    @TargetApi(Build.VERSION_CODES.KITKAT)
+    //all platforms support
+//    @TargetApi(Build.VERSION_CODES.KITKAT)
     private synchronized void registerLocationModeChangeReceiver () {
         if (mLocationModeChangeReceiverRegistered) return;
-
-        getContext().registerReceiver(locationModeChangeReceiver, new IntentFilter(LocationManager.MODE_CHANGED_ACTION));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            getContext().registerReceiver(locationModeChangeReceiver, new IntentFilter(LocationManager.MODE_CHANGED_ACTION));
+        } else {
+            getContext().registerReceiver(locationModeChangeReceiver, new IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION));
+        }
         mLocationModeChangeReceiverRegistered = true;
     }
 
@@ -368,17 +353,23 @@ public class BackgroundGeolocationFacade {
     public boolean locationServicesEnabled() throws PluginException {
         Context context = getContext();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            int locationMode = 0;
+            int locationMode;
             try {
                 locationMode = Settings.Secure.getInt(context.getContentResolver(), Settings.Secure.LOCATION_MODE);
-                return locationMode != Settings.Secure.LOCATION_MODE_OFF;
+//                return locationMode != Settings.Secure.LOCATION_MODE_OFF;
+                return locationMode == Settings.Secure.LOCATION_MODE_HIGH_ACCURACY;
             } catch (SettingNotFoundException e) {
                 logger.error("Location services check failed", e);
                 throw new PluginException("Location services check failed", e, PluginException.SETTINGS_ERROR);
             }
         } else {
-            String locationProviders = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
-            return !TextUtils.isEmpty(locationProviders);
+//            String locationProviders = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
+//            return !TextUtils.isEmpty(locationProviders);
+            LocationManager locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+            PackageManager packageManager = context.getPackageManager();
+            //if has gps - it must be on AND if has googleservices - it must be on
+            return (!packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS) || locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+                    && (!packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_NETWORK) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
         }
     }
 
